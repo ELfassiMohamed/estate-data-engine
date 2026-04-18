@@ -1,0 +1,439 @@
+{
+  "name": "DB Cleaning",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a3eb2238-a72b-4601-a0a5-762a6dbfed13",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM listings\nWHERE id NOT IN (\n  SELECT MIN(id)\n  FROM listings\n  GROUP BY LOWER(TRIM(url))\n);\nSELECT COUNT(*) AS duplicates_deleted FROM (\n  SELECT LOWER(TRIM(url))\n  FROM listings\n  GROUP BY LOWER(TRIM(url))\n  HAVING COUNT(*) > 1\n) t;",
+        "options": {}
+      },
+      "id": "192f2b0d-b4cf-4c5c-9ea3-c53adfcc57a2",
+      "name": "Delete Exact URL Duplicates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        160,
+        -176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE listings SET\n  title       = NULLIF(TRIM(REGEXP_REPLACE(title, '\\s+', ' ', 'g')), ''),\n  city        = NULLIF(TRIM(REGEXP_REPLACE(city, '\\s+', ' ', 'g')), ''),\n  type_bien   = NULLIF(TRIM(REGEXP_REPLACE(type_bien, '\\s+', ' ', 'g')), ''),\n  description = NULLIF(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')), ''),\n  url         = TRIM(LOWER(url))\nWHERE\n  title       IS DISTINCT FROM NULLIF(TRIM(REGEXP_REPLACE(title, '\\s+', ' ', 'g')), '')\n  OR city     IS DISTINCT FROM NULLIF(TRIM(REGEXP_REPLACE(city, '\\s+', ' ', 'g')), '')\n  OR type_bien IS DISTINCT FROM NULLIF(TRIM(REGEXP_REPLACE(type_bien, '\\s+', ' ', 'g')), '')\n  OR description IS DISTINCT FROM NULLIF(TRIM(REGEXP_REPLACE(description, '\\s+', ' ', 'g')), '')\n  OR url      IS DISTINCT FROM TRIM(LOWER(url));\nSELECT COUNT(*) AS normalized_rows FROM listings;",
+        "options": {}
+      },
+      "id": "ef1a2a85-ed32-48f6-9155-b0b5b2173233",
+      "name": "Normalize Fields",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        160,
+        16
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, url FROM listings\nWHERE url IS NOT NULL AND url != ''\nORDER BY scraped_at DESC\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "ae668433-b4ff-4717-939f-70154c1f4e82",
+      "name": "Fetch URLs to Check",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        160,
+        192
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 3
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "b70874b4-bca0-4fb3-8dfd-46715e455e01",
+      "name": "Check URL Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-dead",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 400,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "ff39d142-8999-4e50-883e-256d6b7934c5",
+      "name": "Is URL Dead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        688,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE listings \nSET url_status = 'dead', url_checked_at = NOW() \nWHERE id = {{ $('Fetch URLs to Check').item.json.id }};",
+        "options": {}
+      },
+      "id": "400d28cb-51a5-4c6f-82a5-7cef6cbb3e63",
+      "name": "Mark Dead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        944,
+        96
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE listings \nSET url_status = 'alive', url_checked_at = NOW() \nWHERE id = {{ $('Fetch URLs to Check').item.json.id }};",
+        "options": {}
+      },
+      "id": "37495f1a-6b28-41d9-959c-429c54cfa296",
+      "name": "Mark Alive",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        944,
+        288
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  (SELECT COUNT(*) FROM listings)                                        AS total_rows,\n  (SELECT COUNT(*) FROM listings WHERE source = 'avito')                 AS avito_count,\n  (SELECT COUNT(*) FROM listings WHERE source = 'mubawab')               AS mubawab_count,\n  (SELECT COUNT(*) FROM listings WHERE url_status = 'dead')              AS dead_urls,\n  (SELECT COUNT(*) FROM listings WHERE url_status = 'alive')             AS alive_urls,\n  (SELECT COUNT(*) FROM listings WHERE url_status IS NULL)               AS unchecked_urls,\n  (SELECT COUNT(*) FROM listings WHERE price IS NULL)                    AS missing_price,\n  (SELECT COUNT(*) FROM listings WHERE surface IS NULL)                  AS missing_surface,\n  (SELECT COUNT(*) FROM listings WHERE city IS NULL OR city = '')        AS missing_city,\n  (SELECT COUNT(*) FROM listings WHERE title IS NULL OR title = '')      AS missing_title;",
+        "options": {}
+      },
+      "id": "65b8ec63-fe43-4a79-a0ff-0d80c0f0060e",
+      "name": "Get Summary Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1200,
+        16
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      },
+      "id": "866c779b-7f34-4b5f-b572-6022054c5aca",
+      "name": "Gemini Flash Report",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        224
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "kxQZ4aiJAVNCcpuV",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst text = raw?.text || raw?.content?.[0]?.text || JSON.stringify(raw);\n\nreturn [{\n  json: {\n    status: '✅ Cleanup completed',\n    timestamp: new Date().toISOString(),\n    gemini_report: text\n  }\n}];"
+      },
+      "id": "ac6a91f6-cf03-4650-9b69-2b96c36524b2",
+      "name": "Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS total_before FROM listings;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -240,
+        16
+      ],
+      "id": "ef47a1d8-437a-48a7-b8c0-50246e35ea5a",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "vMYRJN9V6sCDdmAj",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a data quality analyst for a Moroccan real estate scraping database (Avito & Mubawab).\n\nHere are the latest cleanup stats:\n{{ $json.total_rows }} total listings\n{{ $json.avito_count }} from Avito, {{ $json.mubawab_count }} from Mubawab\n{{ $json.dead_urls }} dead URLs, {{ $json.alive_urls }} alive\n{{ $json.missing_price }} missing price, {{ $json.missing_surface }} missing surface\n{{ $json.missing_city }} missing city, {{ $json.missing_title }} missing title\n\nWrite a short 5-sentence professional report covering data health, what was cleaned, concerns, and one recommendation.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1392,
+        16
+      ],
+      "id": "8b9844ff-63b7-426d-b511-277fd91a758c",
+      "name": "AI Agent"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Exact URL Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Get Summary Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Fields": {
+      "main": [
+        [
+          {
+            "node": "Get Summary Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch URLs to Check": {
+      "main": [
+        [
+          {
+            "node": "Check URL Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check URL Status": {
+      "main": [
+        [
+          {
+            "node": "Is URL Dead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is URL Dead?": {
+      "main": [
+        [
+          {
+            "node": "Mark Dead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Alive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Dead": {
+      "main": [
+        [
+          {
+            "node": "Get Summary Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Alive": {
+      "main": [
+        [
+          {
+            "node": "Get Summary Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Delete Exact URL Duplicates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normalize Fields",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch URLs to Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Summary Stats": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Flash Report": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "Africa/Casablanca",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1
+  },
+  "versionId": "fd1d2f30-e9d6-44ef-b450-196409331a2d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bb3f288f725433c6fdbe83e322e9b47dd1a514aeb7bfd06026895561579cc134"
+  },
+  "id": "NuB0vam6vDjxLQqq",
+  "tags": []
+}

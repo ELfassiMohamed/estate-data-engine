@@ -30,7 +30,45 @@ async def run_pipeline() -> None:
             logger.info("[mubawab] Extracted %s listings.", len(mubawab_items))
 
         for item in all_listings:
-            db.insert_listing(item)
+            try:
+                db.insert_listing(item)
+            except Exception as e:
+                logger.error("Failed to insert listing %s: %s", item.url, e)
         logger.info("Inserted %s listings into PostgreSQL.", len(all_listings))
     finally:
         db.close()
+
+
+async def run_pipeline_distributed() -> None:
+    """
+    Distributed pipeline: collect listing URLs, then enqueue each one
+    as a Celery task for parallel scraping by workers.
+    """
+    from src.tasks import scrape_listing_task  # noqa: local import to avoid circular deps
+
+    # Ensure schema exists before workers start inserting.
+    db = PostgresClient()
+    schema_path = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
+    db.init_schema(schema_path)
+    db.close()
+
+    enqueued = 0
+
+    # --- Avito ---
+    async with AvitoScraper(start_urls=settings.avito_start_urls) as avito:
+        avito_urls = await avito.collect_listing_urls()
+        logger.info("[avito] Discovered %s listing URLs.", len(avito_urls))
+        for url in avito_urls:
+            scrape_listing_task.delay(url, "avito")
+            enqueued += 1
+
+    # --- Mubawab ---
+    async with MubawabScraper(start_urls=settings.mubawab_start_urls) as mubawab:
+        mubawab_urls = await mubawab.collect_listing_urls()
+        logger.info("[mubawab] Discovered %s listing URLs.", len(mubawab_urls))
+        for url in mubawab_urls:
+            scrape_listing_task.delay(url, "mubawab")
+            enqueued += 1
+
+    logger.info("Enqueued %s total scraping tasks to Celery.", enqueued)
+

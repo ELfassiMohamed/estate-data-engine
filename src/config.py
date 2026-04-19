@@ -19,6 +19,8 @@ class Settings:
     pguser: str = os.getenv("PGUSER", "postgres")
     pgpassword: str = os.getenv("PGPASSWORD", "postgres")
 
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
     max_listing_pages: int = int(os.getenv("MAX_LISTING_PAGES", "3"))
     max_details_per_source: int = int(os.getenv("MAX_DETAILS_PER_SOURCE", "40"))
     headless: bool = os.getenv("HEADLESS", "true").lower() == "true"

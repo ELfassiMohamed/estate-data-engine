@@ -30,7 +30,11 @@ def parse_decimal(value: str | int | float | None) -> Decimal | None:
         normalized = normalized.replace(",", "")
 
     try:
-        return Decimal(normalized)
+        val = Decimal(normalized)
+        # Sanity check: If price is > 100 Billion, it's likely a phone number or ID error
+        if val > 100_000_000_000:
+            return None
+        return val
     except InvalidOperation:
         return None
 

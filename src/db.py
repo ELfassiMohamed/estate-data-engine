@@ -42,7 +42,8 @@ class PostgresClient:
             VALUES (
                 %(title)s, %(source)s, %(url)s, %(type_bien)s, %(city)s, %(price)s, %(surface)s, %(description)s,
                 %(contact_info)s, %(date_publication)s, %(scraped_at)s, %(raw_payload)s
-            );
+            )
+            ON CONFLICT (url) DO NOTHING;
         """
         payload = {
             "title": listing.title,

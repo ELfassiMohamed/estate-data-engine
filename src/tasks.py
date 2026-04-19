@@ -56,7 +56,10 @@ async def _scrape_single_listing(url: str, source: str) -> dict:
     # Persist to PostgreSQL (reuse existing DB logic).
     db = PostgresClient()
     try:
-        db.insert_listing(listing)
+        try:
+            db.insert_listing(listing)
+        except Exception as e:
+            logger.error("Failed to insert listing %s: %s", listing.url, e)
     finally:
         db.close()
 

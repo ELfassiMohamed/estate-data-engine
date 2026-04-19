@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS listings (
     url TEXT NOT NULL,
     type_bien TEXT,
     city TEXT,
-    price NUMERIC(14,2),
+    price NUMERIC(20,2),
     surface NUMERIC(10,2),
     description TEXT,
     contact_info TEXT,

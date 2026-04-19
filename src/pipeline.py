@@ -30,7 +30,10 @@ async def run_pipeline() -> None:
             logger.info("[mubawab] Extracted %s listings.", len(mubawab_items))
 
         for item in all_listings:
-            db.insert_listing(item)
+            try:
+                db.insert_listing(item)
+            except Exception as e:
+                logger.error("Failed to insert listing %s: %s", item.url, e)
         logger.info("Inserted %s listings into PostgreSQL.", len(all_listings))
     finally:
         db.close()

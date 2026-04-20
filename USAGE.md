@@ -1,10 +1,10 @@
-# 🚀 Estate Data Engine Usage Guide
+#  Estate Data Engine Usage Guide
 
 Welcome to the **Estate Data Engine** usage guide. This document provides step-by-step instructions on how to set up, configure, and run the asynchronous real estate data pipeline.
 
 ---
 
-## 🛠️ Prerequisites
+##  Prerequisites
 
 Before you begin, ensure you have the following installed:
 - **Python 3.10+**
@@ -14,7 +14,7 @@ Before you begin, ensure you have the following installed:
 
 ---
 
-## 📥 Installation
+##  Installation
 
 1. **Clone the Repository**
    ```bash
@@ -69,7 +69,7 @@ Before you begin, ensure you have the following installed:
 
 ---
 
-## 🗄️ Database Setup
+##  Database Setup
 
 Ensure your PostgreSQL database is running and execute the schema script to create the necessary tables:
 
@@ -79,7 +79,7 @@ psql -h localhost -U postgres -d realestate -f sql/schema.sql
 
 ---
 
-## 🚀 Running the Engine
+##  Running the Engine
 
 The engine supports two modes of execution: **Sequential** (standard) and **Distributed** (using Celery/Redis).
 
@@ -114,18 +114,3 @@ celery -A src.celery_app worker --loglevel=info
 ```bash
 python main.py --mode distributed
 ```
-
----
-
-## 📊 Monitoring & Workflows
-
-### Redis Stack Management
-Access the Redis Insight GUI at `http://localhost:8001` (if using redis-stack-server) to monitor task queues and data.
-
-### n8n Integration
-The project includes an `n8n_workflow.json` which can be imported into your n8n instance to automate post-processing or notifications of the scraped data.
-
----
-
-> [!TIP]
-> Use `HEADLESS=false` in your `.env` during development to see Playwright in action!

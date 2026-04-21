@@ -50,7 +50,6 @@ async def run_pipeline_distributed() -> None:
     db = PostgresClient()
     schema_path = Path(__file__).resolve().parent.parent / "sql" / "schema.sql"
     db.init_schema(schema_path)
-    db.close()
 
     enqueued = 0
 
@@ -58,7 +57,12 @@ async def run_pipeline_distributed() -> None:
     async with AvitoScraper(start_urls=settings.avito_start_urls) as avito:
         avito_urls = await avito.collect_listing_urls()
         logger.info("[avito] Discovered %s listing URLs.", len(avito_urls))
-        for url in avito_urls:
+        
+        existing_avito = db.list_existing_urls(avito_urls)
+        new_avito = [u for u in avito_urls if u not in existing_avito]
+        logger.info("[avito] %s already in DB, enqueuing %s new URLs.", len(existing_avito), len(new_avito))
+
+        for url in new_avito:
             scrape_listing_task.delay(url, "avito")
             enqueued += 1
 
@@ -66,9 +70,14 @@ async def run_pipeline_distributed() -> None:
     async with MubawabScraper(start_urls=settings.mubawab_start_urls) as mubawab:
         mubawab_urls = await mubawab.collect_listing_urls()
         logger.info("[mubawab] Discovered %s listing URLs.", len(mubawab_urls))
-        for url in mubawab_urls:
+
+        existing_mubawab = db.list_existing_urls(mubawab_urls)
+        new_mubawab = [u for u in mubawab_urls if u not in existing_mubawab]
+        logger.info("[mubawab] %s already in DB, enqueuing %s new URLs.", len(existing_mubawab), len(new_mubawab))
+
+        for url in new_mubawab:
             scrape_listing_task.delay(url, "mubawab")
             enqueued += 1
 
+    db.close()
     logger.info("Enqueued %s total scraping tasks to Celery.", enqueued)
-

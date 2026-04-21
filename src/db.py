@@ -61,3 +61,12 @@ class PostgresClient:
         }
         with self.conn.cursor() as cur:
             cur.execute(query, payload)
+
+    def list_existing_urls(self, urls: list[str]) -> set[str]:
+        if not urls:
+            return set()
+        
+        query = "SELECT url FROM listings WHERE url = ANY(%s);"
+        with self.conn.cursor() as cur:
+            cur.execute(query, (urls,))
+            return {row[0] for row in cur.fetchall()}

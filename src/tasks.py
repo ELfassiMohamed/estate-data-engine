@@ -22,6 +22,12 @@ SCRAPER_CLASSES = {
     "mubawab": "src.scrapers.mubawab.MubawabScraper",
 }
 
+_worker_metrics = {
+    "total_tasks": 0,
+    "success_count": 0,
+    "failure_count": 0,
+}
+
 
 def _import_scraper_class(dotted_path: str):
     """Dynamically import a scraper class from its dotted path."""
@@ -47,6 +53,15 @@ async def _scrape_single_listing(url: str, source: str) -> dict:
     # because we are not collecting URLs — we already have the target URL.
     async with ScraperClass(start_urls=()) as scraper:
         page = await scraper.context.new_page()
+
+        async def _block_resources(route):
+            if route.request.resource_type in {"image", "media", "font", "stylesheet"}:
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await page.route("**/*", _block_resources)
+
         try:
             await scraper.goto_with_retry(page, url)
             listing = await scraper.parse_listing(page, url)
@@ -95,24 +110,44 @@ def scrape_listing_task(self, url: str, source: str) -> dict:
         A summary of the scraped listing (url, source, title, city).
     """
     task_id = self.request.id or "local"
+    start_time = time.time()
     logger.info("[task:%s] START  source=%s url=%s", task_id, source, url)
 
-    # Anti-scraping politeness: random delay before hitting the site.
-    delay = random.uniform(1.0, 3.0)
+    # Anti-scraping politeness: dynamic delay
+    delay = random.uniform(1.5, 3.5) if source == "avito" else random.uniform(1.0, 2.5)
     logger.debug("[task:%s] Sleeping %.1fs before request", task_id, delay)
     time.sleep(delay)
 
+    _worker_metrics["total_tasks"] += 1
+
+    def _log_metrics():
+        if _worker_metrics["total_tasks"] % 20 == 0:
+            logger.info(
+                "[task:%s] WORKER METRICS - Total: %s, Success: %s, Failed: %s",
+                task_id,
+                _worker_metrics["total_tasks"],
+                _worker_metrics["success_count"],
+                _worker_metrics["failure_count"],
+            )
+
     try:
         result = asyncio.run(_scrape_single_listing(url, source))
+        duration = time.time() - start_time
+        _worker_metrics["success_count"] += 1
         logger.info(
-            "[task:%s] SUCCESS title=%r city=%r",
+            "[task:%s] SUCCESS title=%r city=%r duration=%.2fs",
             task_id,
             result.get("title", ""),
             result.get("city", ""),
+            duration,
         )
+        _log_metrics()
         return result
 
     except Exception as exc:
-        logger.error("[task:%s] FAILED url=%s error=%s", task_id, url, exc, exc_info=True)
+        duration = time.time() - start_time
+        _worker_metrics["failure_count"] += 1
+        logger.error("[task:%s] FAILED url=%s duration=%.2fs error=%s", task_id, url, duration, exc, exc_info=True)
+        _log_metrics()
         # Retry with exponential backoff (10s, 20s, 40s).
         raise self.retry(exc=exc, countdown=10 * (2 ** self.request.retries))

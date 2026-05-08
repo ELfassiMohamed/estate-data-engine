@@ -2,13 +2,6 @@
 
 Asynchronous real estate data pipeline designed to scrape, process, and store real estate listings using **Playwright** and **PostgreSQL**.
 
-##  Features
-
-- **Asynchronous Pipeline**: Built with `asyncio` for efficient data flow.
-- **Automated Scraping**: Utilizes Playwright for robust web automation.
-- **Persistent Storage**: Robust PostgreSQL integration using `psycopg`.
-- **Configurable**: Easily adjust scraping behavior and database settings via `.env`.
-- **Logging**: Integrated logging for monitoring and debugging.
 
 ##  Tech Stack
 
